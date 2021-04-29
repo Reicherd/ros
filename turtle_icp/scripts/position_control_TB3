@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+
+import rospy
+from geometry_msgs.msg import Twist
+from turtlesim.msg import Pose
+from nav_msgs.msg import Odometry
+from tf.transformations import euler_from_quaternion
+from sensor_msgs.msg import LaserScan
+import numpy as np
+import time
+import math
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
+
+#  ICP parameters
+EPS = 0.0001
+MAX_ITER = 100
+
+show_animation = True
+
+
+def icp_matching(previous_points, current_points):
+    """
+    Iterative Closest Point matching
+    - input
+    previous_points: 2D or 3D points in the previous frame
+    current_points: 2D or 3D points in the current frame
+    - output
+    R: Rotation matrix
+    T: Translation vector
+    """
+    H = None  # homogeneous transformation matrix
+
+    dError = np.inf
+    preError = np.inf
+    count = 0
+
+    while dError >= EPS:
+        count += 1
+
+        indexes, error = nearest_neighbor_association(previous_points, current_points)
+        Rt, Tt = svd_motion_estimation(previous_points[:, indexes], current_points)
+        # update current points
+        current_points = (Rt @ current_points) + Tt[:, np.newaxis]
+
+        dError = preError - error
+
+        if dError < 0:  # prevent matrix H changing, exit loop
+            print("Not Converge...", preError, dError, count)
+            break
+
+        preError = error
+        H = update_homogeneous_matrix(H, Rt, Tt)
+
+        if dError <= EPS:
+            print("Converge", error, dError, count)
+            break
+        elif MAX_ITER <= count:
+            print("Not Converge...", error, dError, count)
+            break
+
+    R = np.array(H[0:-1, 0:-1])
+    T = np.array(H[0:-1, -1])
+
+    return R, T
+
+
+def update_homogeneous_matrix(Hin, R, T):
+
+    r_size = R.shape[0]
+    H = np.zeros((r_size + 1, r_size + 1))
+
+    H[0:r_size, 0:r_size] = R
+    H[0:r_size, r_size] = T
+    H[r_size, r_size] = 1.0
+
+    if Hin is None:
+        return H
+    else:
+        return Hin @ H
+
+
+def nearest_neighbor_association(previous_points, current_points):
+
+    # calc the sum of residual errors
+    delta_points = previous_points - current_points
+    d = np.linalg.norm(delta_points, axis=0)
+    error = sum(d)
+
+    # calc index with nearest neighbor assosiation
+    d = np.linalg.norm(np.repeat(current_points, previous_points.shape[1], axis=1)
+                       - np.tile(previous_points, (1, current_points.shape[1])), axis=0)
+    indexes = np.argmin(d.reshape(current_points.shape[1], previous_points.shape[1]), axis=1)
+
+    return indexes, error
+
+
+def svd_motion_estimation(previous_points, current_points):
+    pm = np.mean(previous_points, axis=1)
+    cm = np.mean(current_points, axis=1)
+
+    p_shift = previous_points - pm[:, np.newaxis]
+    c_shift = current_points - cm[:, np.newaxis]
+
+    W = c_shift @ p_shift.T
+    u, s, vh = np.linalg.svd(W)
+
+    R = (u @ vh).T
+    t = pm - (R @ cm)
+
+    return R, t
+
+
+class TurtleControl:
+    def __init__(self):
+        rospy.init_node("tb3control_node", anonymous=True)
+        rospy.Subscriber("tb3_0/odom", Odometry, self.update_ref)
+        rospy.Subscriber("tb3_0/scan", LaserScan, self.update_scan)
+        self.pose = Pose()
+        self.rate = rospy.Rate(1)
+        self.previous_points = np.zeros((2, 360))
+        self.current_points = np.zeros((2, 360))
+        self.scan = LaserScan()
+        self.pose_x_inicial = 0
+        self.pose_y_inicial = 0
+        self.pose_x_atual = 0
+        self.pose_y_atual = 0
+
+    def update_ref(self, msg):
+        self.pose.x = msg.pose.pose.position.x
+        self.pose.y = msg.pose.pose.position.y
+
+    def update_scan(self, msg):
+        info_scan = np.asarray(msg.ranges)
+
+        x = []; y = []
+        for r,deg in zip(info_scan, enumerate(info_scan)):
+            if r != np.inf:
+                x.append( r * np.cos( deg[0] * np.pi/180 ))
+                y.append( r * np.sin( deg[0] * np.pi/180 ))
+            else:
+                x.append(3.5)
+                y.append(3.5)
+
+        self.current_points = np.vstack((x, y))
+
+    def odom_lidar(self):
+        self.pose_x_inicial = self.pose.x
+        self.pose_y_inicial = self.pose.y
+        self.pose_x_atual = self.pose_x_inicial
+        self.pose_y_atual = self.pose_y_inicial
+        coord = np.array([self.pose_x_atual, self.pose_y_atual, 0, 1])
+        while not rospy.is_shutdown():
+            if np.count_nonzero(self.previous_points) > 0:
+
+                R, T = icp_matching(self.previous_points, self.current_points)
+                self.previous_points = self.current_points
+                position_prediction = np.transpose(np.round(np.array([
+                                                    [R[0,0] ,R[0,1] ,0      , T[0]  ],
+                                                    [R[1,0] ,R[1,1] ,0      , T[1]  ],
+                                                    [0      ,0      ,1      , 0     ],
+                                                    [0      ,0      ,0      ,1      ]
+                                                ]), 2))
+                print([self.pose.x, self.pose.y])
+
+                coord = coord @ position_prediction
+                print(coord)
+            else:
+                self.previous_points = self.current_points
+
+            time.sleep(5)
+            
+
+if __name__ == '__main__':
+    bot = TurtleControl()
+    time.sleep(5)
+    bot.odom_lidar()

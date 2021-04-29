@@ -1,8 +1,8 @@
 <launch>
   <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
   <param name="model" value="$(arg model)"/>
-  <node pkg="two_turtle" type="twoturtle_teleop_key" name="twoturtle_teleop_keyboard"  output="screen">
+  <node pkg="turtle_icp" type="twoturtle_teleop_key" name="twoturtle_teleop_keyboard"  output="screen">
   </node>
-  <node pkg="two_turtle" type="position_control_TB3" name="postion_control">
+  <node pkg="turtle_icp" type="position_control_TB3" name="postion_control">
   </node>
 </launch>
