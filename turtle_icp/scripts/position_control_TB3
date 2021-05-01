@@ -148,26 +148,40 @@ class TurtleControl:
         self.pose_y_inicial = self.pose.y
         self.pose_x_atual = self.pose_x_inicial
         self.pose_y_atual = self.pose_y_inicial
-        coord = np.array([self.pose_x_atual, self.pose_y_atual, 0, 1])
+        coord_copy = np.array([self.pose_x_atual, self.pose_y_atual])
+        coord = coord_copy[:]
         while not rospy.is_shutdown():
             if np.count_nonzero(self.previous_points) > 0:
 
                 R, T = icp_matching(self.previous_points, self.current_points)
-                self.previous_points = self.current_points
-                position_prediction = np.transpose(np.round(np.array([
+                self.previous_points = self.current_points[:]
+                position_prediction = np.round(np.array([
                                                     [R[0,0] ,R[0,1] ,0      , T[0]  ],
                                                     [R[1,0] ,R[1,1] ,0      , T[1]  ],
                                                     [0      ,0      ,1      , 0     ],
                                                     [0      ,0      ,0      ,1      ]
-                                                ]), 2))
+                                                ]), 2)
+                theta = np.arccos(R[0,0])
+                dist = np.sqrt(T[0]*T[0] + T[1]*T[1])
                 print([self.pose.x, self.pose.y])
 
-                coord = coord @ position_prediction
+                print(theta)
+                print(dist)
+                print(coord)
+                coord[0] = coord[0] + np.sin(theta) * dist
+                coord[1] = coord[1] + np.cos(theta) * dist
+
+                #print(coord)
+                #coord = np.dot(translation, [coord[0], coord[1], 1])
+                #print(coord)
+                #coord = rotation.dot([coord[0], coord[1]])
+                #coord = np.dot(position_prediction, coord)
                 print(coord)
             else:
                 self.previous_points = self.current_points
 
-            time.sleep(5)
+            self.rate.sleep()
+
             
 
 if __name__ == '__main__':
