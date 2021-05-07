@@ -158,7 +158,7 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 catkin_install_python(PROGRAMS
-  scripts/twoturtle_teleop_key scripts/position_control_TB3 scripts/icp_example
+  scripts/twoturtle_teleop_key scripts/turtle_icp
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

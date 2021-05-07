@@ -116,7 +116,7 @@ class TurtleControl:
         rospy.Subscriber("tb3_0/odom", Odometry, self.update_ref)
         rospy.Subscriber("tb3_0/scan", LaserScan, self.update_scan)
         self.pose = Pose()
-        self.rate = rospy.Rate(1)
+        self.rate = rospy.Rate(2)
         self.previous_points = np.zeros((2, 360))
         self.current_points = np.zeros((2, 360))
         self.scan = LaserScan()
@@ -148,7 +148,10 @@ class TurtleControl:
         self.pose_y_inicial = self.pose.y
         self.pose_x_atual = self.pose_x_inicial
         self.pose_y_atual = self.pose_y_inicial
-        coord_copy = np.array([self.pose_x_atual, self.pose_y_atual])
+        coord_copy = np.array([[1       ,0      ,0      , self.pose.x  ],
+                                [0      ,1      ,0      , self.pose.y,  ],
+                                [0      ,0      ,1      , 0     ],
+                                [0      ,0      ,0      , 1     ]])
         coord = coord_copy[:]
         while not rospy.is_shutdown():
             if np.count_nonzero(self.previous_points) > 0:
@@ -161,21 +164,9 @@ class TurtleControl:
                                                     [0      ,0      ,1      , 0     ],
                                                     [0      ,0      ,0      ,1      ]
                                                 ]), 2)
-                theta = np.arccos(R[0,0])
-                dist = np.sqrt(T[0]*T[0] + T[1]*T[1])
+
                 print([self.pose.x, self.pose.y])
-
-                print(theta)
-                print(dist)
-                print(coord)
-                coord[0] = coord[0] + np.sin(theta) * dist
-                coord[1] = coord[1] + np.cos(theta) * dist
-
-                #print(coord)
-                #coord = np.dot(translation, [coord[0], coord[1], 1])
-                #print(coord)
-                #coord = rotation.dot([coord[0], coord[1]])
-                #coord = np.dot(position_prediction, coord)
+                coord = position_prediction @ coord
                 print(coord)
             else:
                 self.previous_points = self.current_points
